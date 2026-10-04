@@ -108,8 +108,9 @@ RE_CNAE = re.compile(r"C\.?\s?N\.?\s?A\.?\s?E\.?(?:\s*-?\s*20(?:09|25))?\s*[:.]?
 RE_CP = re.compile(r"(?<!\d)(0[1-9]\d{3}|[1-4]\d{4}|5[0-2]\d{3})(?!\d)")
 RE_DATOS_FECHA = re.compile(r"\(\s*(\d{1,2}\.\d{1,2}\.\d{2,4})\s*\)")
 RE_HOJA = re.compile(r"\bH\s+([A-Z]{1,3})\s*(\d+)")
-RE_ETIQUETA_CARGO = re.compile(
-    r"(?:^|(?<=[.;])\s*)([A-ZÁÉÍÓÚ][A-Za-zÁÉÍÓÚáéíóúñÑº.\- /]{0,38}?[a-záéíóúñº.][A-Za-zÁÉÍÓÚáéíóúñÑº.\- /]{0,10}?)\s*:\s+")
+# Etiqueta de cargo: uno o más tokens con alguna minúscula ("Adm. Unico", "Apo.Manc.", "Socio único")
+# seguidos de ":". Los nombres en el BORME van en mayúsculas, así que no se confunden con etiquetas.
+RE_ETIQUETA_CARGO = re.compile(r"(?:(?<=\s)|^)((?:\S*[a-záéíóúñº]\S*\s+)*?\S*[a-záéíóúñº][^\s:]*)\s*:\s*")
 
 SIGLAS_FORMA = [  # (regex sobre el final de la denominación, forma normalizada)
     (r"SOCIEDAD LIMITADA PROFESIONAL|S\.?L\.?P\.?", "SLP"),
