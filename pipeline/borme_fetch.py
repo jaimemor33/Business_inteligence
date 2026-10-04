@@ -42,6 +42,9 @@ class ItemA:
     provincia: str          # 'MADRID'
     url_pdf: str
     path: str = ""          # ruta local una vez descargado
+    url_xml: str = ""       # API v2.0 (28-05-2026): XML/HTML de la sección primera, si el sumario lo trae
+    url_html: str = ""
+    path_xml: str = ""
 
 
 # --------------------------------------------------------------------------- cliente HTTP
@@ -118,6 +121,25 @@ class BoeClient:
         fjson.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         return data
 
+    # ------------------------------------------------------------------ xml (API v2.0)
+
+    def xml(self, item: ItemA, refresh: bool = False) -> Path | None:
+        """Descarga el XML de la sección A si el sumario trae url_xml. No validado con datos reales."""
+        if not item.url_xml:
+            return None
+        d = ensure(self.raw_dir / "borme" / item.fecha.replace("-", ""))
+        out = d / f"{item.identificador}.xml"
+        if out.exists() and out.stat().st_size > 0 and not refresh:
+            return out
+        r = self.get(item.url_xml, accept="application/xml")
+        if r.status_code != 200 or not r.content.lstrip()[:1] == b"<":
+            log.warning("XML %s: HTTP %s o contenido no XML; se usará el PDF", item.url_xml, r.status_code)
+            return None
+        tmp = out.with_suffix(".part")
+        tmp.write_bytes(r.content)
+        tmp.replace(out)
+        return out
+
     # ------------------------------------------------------------------ pdf
 
     def pdf(self, item: ItemA, refresh: bool = False) -> Path:
@@ -169,8 +191,8 @@ def _walk(node: Any, ctx: dict):
             yield from _walk(v, ctx)
 
 
-def _url_of(item: dict) -> str | None:
-    u = item.get("url_pdf") or item.get("urlPdf") or item.get("url")
+def _url_of(item: dict, keys=("url_pdf", "urlPdf", "url")) -> str | None:
+    u = next((item[k] for k in keys if item.get(k)), None)
     if isinstance(u, dict):  # {"szBytes":..., "texto": "https://..."}
         u = u.get("texto") or u.get("text") or u.get("#text") or u.get("url") or u.get("href")
     if not isinstance(u, str) or not u.strip():
@@ -200,7 +222,9 @@ def items_seccion_a(sumario: dict, fecha: dt.date) -> list[ItemA]:
             continue
         ident = m.group(0) if m else Path(url).stem
         out[ident] = ItemA(fecha=fecha.isoformat(), identificador=ident, cod_provincia=cod,
-                           provincia=provincia_name(cod) or norm(titulo), url_pdf=url)
+                           provincia=provincia_name(cod) or norm(titulo), url_pdf=url,
+                           url_xml=_url_of(it, ("url_xml", "urlXml", "xml", "url_XML")) or "",
+                           url_html=_url_of(it, ("url_html", "urlHtml", "html", "url_HTML")) or "")
     if not out:  # último recurso: buscar URLs de PDF de la sección A en el JSON serializado
         raw = json.dumps(sumario, ensure_ascii=False)
         for u in set(re.findall(r"(?:https?://www\.boe\.es)?/borme/dias/[\w/]+/BORME-A-\d{4}-\d+-\d{2}\.pdf", raw)):
@@ -251,9 +275,15 @@ def fetch(desde: dt.date, hasta: dt.date, provincias: set[str] | None, raw_dir: 
             continue
         for it in items:
             try:
+                px = client.xml(it, refresh=refresh)
+                it.path_xml = str(px) if px else ""
+            except Exception as e:
+                log.warning("XML %s: %s", it.identificador, e)
+            try:
                 it.path = str(client.pdf(it, refresh=refresh))
-                done.append(it)
             except Exception as e:
                 log.error("PDF %s: %s", it.identificador, e)
+            if it.path or it.path_xml:
+                done.append(it)
         _append_manifest(raw_dir, done)
     return done

@@ -191,6 +191,49 @@ def pdf_to_text(path: str | Path, engine: str = "auto") -> str:
     return "\n".join((p.extract_text() or "") for p in reader.pages)
 
 
+def xml_to_text(path: str | Path) -> str:
+    """XML de la sección A (API v2.0) -> texto con el mismo formato que el PDF.
+
+    NO VALIDADO: se desconoce la estructura real del XML. Estrategia defensiva:
+    1) volcar los nodos de texto en orden de documento (una línea por nodo) y segmentar con el
+       patrón "NNNN - DENOMINACION."; 2) si no aparece ningún anuncio, tomar como anuncio cada
+       elemento de mayor nivel que contenga exactamente un "Datos registrales" y buscar su número
+       en un atributo o al principio del texto.
+    """
+    import xml.etree.ElementTree as ET
+    data = Path(path).read_bytes()
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        root = ET.fromstring(data.decode("latin-1").encode("utf-8"))
+    lines: list[str] = []
+
+    def walk(e):
+        if e.text and e.text.strip():
+            lines.append(e.text.strip())
+        for c in e:
+            walk(c)
+            if c.tail and c.tail.strip():
+                lines.append(c.tail.strip())
+
+    walk(root)
+    text = "\n".join(lines)
+    if segment(text):
+        return text
+    parent = {c: p for p in root.iter() for c in p}
+    count = {e: " ".join(e.itertext()).count("Datos registrales") for e in root.iter()}
+    blocks = []
+    for e in root.iter():
+        if count[e] == 1 and (e not in parent or count[parent[e]] > 1):
+            t = re.sub(r"\s+", " ", " ".join(x.strip() for x in e.itertext() if x.strip()))
+            if not RE_ANUNCIO.match(t):
+                num = next((v for v in e.attrib.values() if re.fullmatch(r"\d{1,7}", str(v).strip())), None)
+                if num:
+                    t = f"{num} - {t}"
+            blocks.append(t)
+    return "\n".join(blocks)
+
+
 # --------------------------------------------------------------------------- texto -> anuncios
 
 
@@ -370,6 +413,7 @@ class Anuncio:
     socio_unico_persona_juridica: bool | None = None
     parse_ok: bool = True
     parse_warnings: str = ""
+    fuente: str = ""                 # 'xml' | 'pdf' | 'txt'
     extra: dict = field(default_factory=dict, repr=False)
 
 
@@ -481,7 +525,13 @@ def parse_text(text: str, meta: dict | None = None) -> list[Anuncio]:
 def parse_file(path: str | Path, engine: str = "auto") -> list[Anuncio]:
     """Parsea un PDF (o un .txt con el texto ya extraído, útil para pruebas)."""
     path = Path(path)
-    text = path.read_text(encoding="utf-8") if path.suffix.lower() == ".txt" else pdf_to_text(path, engine)
+    suf = path.suffix.lower()
+    if suf == ".txt":
+        text = path.read_text(encoding="utf-8")
+    elif suf == ".xml":
+        text = xml_to_text(path)
+    else:
+        text = pdf_to_text(path, engine)
     return parse_text(text, meta_from_path(path))
 
 
@@ -496,23 +546,34 @@ def to_frame(anuncios: list[Anuncio]) -> pd.DataFrame:
 
 def parse_dir(raw_dir: Path, desde: dt.date | None = None, hasta: dt.date | None = None,
               provincias: set[str] | None = None, engine: str = "auto") -> pd.DataFrame:
-    """Parsea todos los PDF/TXT de data/raw/borme/AAAAMMDD/ que cumplan los filtros."""
-    files = sorted(list(Path(raw_dir).glob("borme/*/BORME-A-*.pdf")) + list(Path(raw_dir).glob("borme/*/BORME-A-*.txt")))
-    seen, todos = set(), []
-    for f in files:
-        meta = meta_from_path(f)
-        if f.stem in seen:  # si existen .pdf y .txt del mismo BORME, basta uno
-            continue
+    """Parsea los BORME de data/raw/borme/AAAAMMDD/ que cumplan los filtros.
+
+    Por cada BORME se prueba, en este orden, el XML (API v2.0), el PDF y un .txt ya extraído; se
+    pasa al siguiente formato si el anterior falla o no produce anuncios.
+    """
+    grupos: dict[Path, list[Path]] = {}
+    for ext in ("xml", "pdf", "txt"):
+        for f in sorted(Path(raw_dir).glob(f"borme/*/BORME-A-*.{ext}")):
+            grupos.setdefault(f.with_suffix(""), []).append(f)
+    todos = []
+    for stem, files in sorted(grupos.items()):
+        meta = meta_from_path(files[0])
         fp = meta.get("fecha_publicacion")
         if (desde and fp and fp < desde) or (hasta and fp and fp > hasta):
             continue
         if provincias and meta.get("cod_provincia") not in provincias:
             continue
-        seen.add(f.stem)
-        try:
-            res = parse_file(f, engine)
-            log.info("%s: %d anuncios", f.name, len(res))
-            todos.extend(res)
-        except Exception as e:
-            log.error("No se pudo parsear %s: %s", f, e)
+        for f in files:
+            try:
+                res = parse_file(f, engine)
+            except Exception as e:
+                log.error("No se pudo parsear %s: %s", f, e)
+                continue
+            if res:
+                log.info("%s: %d anuncios", f.name, len(res))
+                for a in res:
+                    a.fuente = f.suffix[1:]
+                todos.extend(res)
+                break
+            log.warning("%s: 0 anuncios; se prueba el siguiente formato", f.name)
     return to_frame(todos)
