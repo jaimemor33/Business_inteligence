@@ -213,7 +213,11 @@ def items_seccion_a(sumario: dict, fecha: dt.date) -> list[ItemA]:
         url = _url_of(it)
         ident = str(it.get("identificador") or it.get("id") or "")
         m = RE_ID_A.search(ident) or (RE_ID_A.search(url) if url else None)
-        en_seccion_a = ctx.get("seccion_codigo") == "A" or "PRIMERA" in norm(ctx.get("seccion_nombre", ""))
+        otra = re.search(r"BORME-([A-Z])-", ident + " " + (url or ""))
+        if otra and otra.group(1) != "A":  # sección B (otros actos), C (anuncios), S (sumario)...
+            continue
+        cod_sec = ctx.get("seccion_codigo")
+        en_seccion_a = cod_sec == "A" or (cod_sec is None and "ACTOS INSCRITOS" in norm(ctx.get("seccion_nombre", "")))
         if not url or not (m or en_seccion_a) or not url.lower().endswith(".pdf"):
             continue
         titulo = str(it.get("titulo") or it.get("title") or "")

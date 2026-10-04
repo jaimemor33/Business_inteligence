@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import pandas as pd
@@ -414,7 +414,6 @@ class Anuncio:
     parse_ok: bool = True
     parse_warnings: str = ""
     fuente: str = ""                 # 'xml' | 'pdf' | 'txt'
-    extra: dict = field(default_factory=dict, repr=False)
 
 
 def parse_anuncio(num: int, texto: str, meta: dict | None = None) -> Anuncio:
@@ -536,12 +535,7 @@ def parse_file(path: str | Path, engine: str = "auto") -> list[Anuncio]:
 
 
 def to_frame(anuncios: list[Anuncio]) -> pd.DataFrame:
-    rows = []
-    for a in anuncios:
-        d = asdict(a)
-        d.pop("extra", None)
-        rows.append(d)
-    return pd.DataFrame(rows, columns=[f for f in Anuncio.__dataclass_fields__ if f != "extra"])
+    return pd.DataFrame([asdict(a) for a in anuncios], columns=list(Anuncio.__dataclass_fields__))
 
 
 def parse_dir(raw_dir: Path, desde: dt.date | None = None, hasta: dt.date | None = None,

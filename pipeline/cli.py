@@ -30,9 +30,10 @@ def _paths(args) -> dict[str, Path]:
 def _expand(patterns: list[str] | None) -> list[Path]:
     out: list[Path] = []
     for p in patterns or []:
-        hits = glob.glob(p)
-        if not hits and Path(p).is_dir():
+        if Path(p).is_dir():
             hits = [str(x) for x in Path(p).iterdir() if x.suffix.lower() in (".csv", ".xls", ".xlsx")]
+        else:
+            hits = glob.glob(p)
         out.extend(Path(h) for h in hits)
     return sorted(set(out))
 

@@ -123,13 +123,16 @@ DIAS = {"20260602": "Martes 2 de junio de 2026", "20260715": "Miércoles 15 de j
 PROV = {"28": "MADRID", "08": "BARCELONA"}
 
 
-def _hyphenate(lines: list[str], every: int = 6) -> list[str]:
+def _hyphenate(lines: list[str]) -> list[str]:
     """Parte con guion la última palabra larga de algunas líneas, como hace la maquetación del PDF."""
     out = []
-    for i, line in enumerate(lines):
+    n = 0
+    for line in lines:
         words = line.split(" ")
         last = words[-1] if words else ""
-        if i % every == 3 and len(last) >= 8 and last.isalpha() and last.islower():
+        ok = len(last) >= 8 and last.isalpha() and last.islower()
+        n += ok
+        if ok and n % 2 == 1:
             cut = len(last) // 2
             out.append(" ".join(words[:-1] + [last[:cut] + "-"]))
             out.append("\x00" + last[cut:])  # se pegará al principio de la línea siguiente

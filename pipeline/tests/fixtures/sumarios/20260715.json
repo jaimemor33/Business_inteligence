@@ -1,0 +1,72 @@
+{
+ "status": {
+  "code": "200",
+  "text": "ok"
+ },
+ "data": {
+  "sumario": {
+   "metadatos": {
+    "publicacion": "BORME",
+    "fecha_publicacion": "20260715"
+   },
+   "diario": [
+    {
+     "numero": "133",
+     "sumario_diario": {
+      "identificador": "BORME-S-2026-133",
+      "url_pdf": {
+       "szBytes": "9999",
+       "szKBytes": "10",
+       "texto": "https://www.boe.es/borme/dias/2026/07/15/pdfs/BORME-S-2026-133.pdf"
+      }
+     },
+     "seccion": [
+      {
+       "codigo": "A",
+       "nombre": "SECCIÓN PRIMERA. Empresarios. Actos inscritos",
+       "item": {
+        "identificador": "BORME-A-2026-133-28",
+        "titulo": "MADRID",
+        "url_pdf": {
+         "szBytes": "123456",
+         "szKBytes": "121",
+         "texto": "https://www.boe.es/borme/dias/2026/07/15/pdfs/BORME-A-2026-133-28.pdf"
+        },
+        "url_xml": "https://www.boe.es/diario_borme/xml.php?id=BORME-A-2026-133-28"
+       }
+      },
+      {
+       "codigo": "B",
+       "nombre": "SECCIÓN PRIMERA. Empresarios. Otros actos publicados en el Registro Mercantil",
+       "item": [
+        {
+         "identificador": "BORME-B-2026-133-28",
+         "titulo": "MADRID",
+         "url_pdf": {
+          "texto": "https://www.boe.es/borme/dias/2026/07/15/pdfs/BORME-B-2026-133-28.pdf"
+         }
+        }
+       ]
+      },
+      {
+       "codigo": "C",
+       "nombre": "SECCIÓN SEGUNDA. Anuncios y avisos legales",
+       "apartado": [
+        {
+         "nombre": "FUSIONES Y ABSORCIONES DE EMPRESAS",
+         "item": {
+          "identificador": "BORME-C-2026-1133",
+          "titulo": "EMPRESA X SA",
+          "url_pdf": {
+           "texto": "https://www.boe.es/borme/dias/2026/07/15/pdfs/BORME-C-2026-1133.pdf"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

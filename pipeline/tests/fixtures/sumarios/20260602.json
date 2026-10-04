@@ -1,0 +1,91 @@
+{
+ "status": {
+  "code": "200",
+  "text": "ok"
+ },
+ "data": {
+  "sumario": {
+   "metadatos": {
+    "publicacion": "BORME",
+    "fecha_publicacion": "20260602"
+   },
+   "diario": [
+    {
+     "numero": "103",
+     "sumario_diario": {
+      "identificador": "BORME-S-2026-103",
+      "url_pdf": {
+       "szBytes": "9999",
+       "szKBytes": "10",
+       "texto": "https://www.boe.es/borme/dias/2026/06/02/pdfs/BORME-S-2026-103.pdf"
+      }
+     },
+     "seccion": [
+      {
+       "codigo": "A",
+       "nombre": "SECCIÓN PRIMERA. Empresarios. Actos inscritos",
+       "item": [
+        {
+         "identificador": "BORME-A-2026-103-28",
+         "titulo": "MADRID",
+         "url_pdf": {
+          "szBytes": "123456",
+          "szKBytes": "121",
+          "texto": "https://www.boe.es/borme/dias/2026/06/02/pdfs/BORME-A-2026-103-28.pdf"
+         }
+        },
+        {
+         "identificador": "BORME-A-2026-103-08",
+         "titulo": "BARCELONA",
+         "url_pdf": {
+          "szBytes": "123456",
+          "szKBytes": "121",
+          "texto": "https://www.boe.es/borme/dias/2026/06/02/pdfs/BORME-A-2026-103-08.pdf"
+         }
+        },
+        {
+         "identificador": "BORME-A-2026-103-99",
+         "titulo": "ÍNDICE ALFABÉTICO DE SOCIEDADES",
+         "url_pdf": {
+          "szBytes": "123456",
+          "szKBytes": "121",
+          "texto": "https://www.boe.es/borme/dias/2026/06/02/pdfs/BORME-A-2026-103-99.pdf"
+         }
+        }
+       ]
+      },
+      {
+       "codigo": "B",
+       "nombre": "SECCIÓN PRIMERA. Empresarios. Otros actos publicados en el Registro Mercantil",
+       "item": [
+        {
+         "identificador": "BORME-B-2026-103-28",
+         "titulo": "MADRID",
+         "url_pdf": {
+          "texto": "https://www.boe.es/borme/dias/2026/06/02/pdfs/BORME-B-2026-103-28.pdf"
+         }
+        }
+       ]
+      },
+      {
+       "codigo": "C",
+       "nombre": "SECCIÓN SEGUNDA. Anuncios y avisos legales",
+       "apartado": [
+        {
+         "nombre": "FUSIONES Y ABSORCIONES DE EMPRESAS",
+         "item": {
+          "identificador": "BORME-C-2026-1103",
+          "titulo": "EMPRESA X SA",
+          "url_pdf": {
+           "texto": "https://www.boe.es/borme/dias/2026/06/02/pdfs/BORME-C-2026-1103.pdf"
+          }
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

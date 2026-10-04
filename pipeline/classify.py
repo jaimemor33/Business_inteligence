@@ -169,7 +169,7 @@ CNAE_SECTOR: dict[str, str] = {
     "8695": "fisioterapia",                # CNAE-2025: fisioterapia
     "8699": "sanitario_generico",
     "3250": "laboratorio",                 # fabricación de prótesis dentales (laboratorio protésico)
-    "9602": "peluqueria",                  # CNAE-2009: peluquería y otros tratamientos de belleza
+    "9602": "belleza_generico",            # CNAE-2009: peluquería y otros tratamientos de belleza
     "9621": "peluqueria", "9622": "centro_estetica", "9623": "spa",   # CNAE-2025
     "9604": "spa",                         # CNAE-2009: actividades de mantenimiento físico (spa, sauna)
     "9313": "gimnasio", "9311": "gimnasio", "9319": "gimnasio",
@@ -190,10 +190,16 @@ CNAE_SECTOR: dict[str, str] = {
     "7010": "ruido", "7022": "ruido", "6201": "ruido", "6202": "ruido", "6209": "ruido", "7311": "ruido",
     "41": "otros", "42": "otros", "43": "otros", "49": "otros", "01": "otros", "62": "ruido",
 }
-# Sectores CNAE que necesitan las palabras clave para concretar (p. ej. 8690).
-CNAE_GENERICOS = {"sanitario_generico", "retail", "otros"}
 SANITARIOS = {"dental", "medicina_estetica", "fisioterapia", "podologia", "psicologia", "optica", "audiologia",
               "imagen_diagnostica", "fertilidad", "laboratorio"}
+# CNAE "cajón de sastre": las palabras clave concretan el sector dentro de los permitidos; sin
+# palabras clave se usa el sector por defecto (None = sin_clasificar).
+CNAE_GENERICOS: dict[str, tuple[set[str], str | None]] = {
+    "sanitario_generico": (SANITARIOS, None),
+    "belleza_generico": ({"peluqueria", "centro_estetica", "spa", "medicina_estetica"}, "peluqueria"),
+    "retail": ({"retail", "supermercado", "optica", "audiologia", "farmacia"}, "retail"),
+    "otros": (set(), "otros"),
+}
 TODOS_SECTORES = list(SECTORES) + ["ruido", "sin_clasificar"]
 
 _COMPILED = {s: [(re.compile(r"\b" + p), w) for p, w in d["kw"].items()] for s, d in SECTORES.items()}
@@ -258,24 +264,21 @@ def classify_text(objeto: str | None, denominacion: str | None = None, cnae: str
         acuerdo = s1 == cs
         conf = 0.95 if acuerdo or not s1 else (0.85 if v1 < 4 else 0.7)
         return Clasificacion(cs, conf, f"cnae:{code}" + (f"+kw:{','.join(hits.get(cs, [])[:3])}" if acuerdo else ""), "cnae")
-    if cs in CNAE_GENERICOS and s1:
-        if cs == "sanitario_generico" and s1 in SANITARIOS:
-            return Clasificacion(s1, min(0.9, 0.6 + 0.05 * v1), f"cnae:{code}+kw:{','.join(hits[s1][:3])}", "cnae")
-        if cs == "retail" and s1 in ("retail", "supermercado", "optica", "audiologia", "farmacia"):
-            return Clasificacion(s1, min(0.9, 0.6 + 0.05 * v1), f"cnae:{code}+kw:{','.join(hits[s1][:3])}", "cnae")
+    if cs in CNAE_GENERICOS and s1 and s1 in CNAE_GENERICOS[cs][0]:
+        return Clasificacion(s1, min(0.9, 0.6 + 0.05 * v1), f"cnae:{code}+kw:{','.join(hits[s1][:3])}", "cnae")
 
     # 2) Palabras clave.
     if not s1 and not ruido:
         if cs:  # CNAE genérico sin palabras clave
-            return Clasificacion(cs if cs != "sanitario_generico" else "sin_clasificar", 0.4, f"cnae:{code}", "cnae")
+            return Clasificacion(CNAE_GENERICOS[cs][1] or "sin_clasificar", 0.4, f"cnae:{code}", "cnae")
         return Clasificacion("sin_clasificar", 0.0, "sin_coincidencias", "ninguno")
     if ruido >= v1 or (ruido >= 3 and v1 < 3):
         conf = min(0.95, 0.5 + 0.1 * ruido) * (0.6 if v1 >= 3 else 1.0)
         return Clasificacion("ruido", round(conf, 3), "ruido:" + ",".join(ruido_hits[:3]), "ruido")
     margen = (v1 - v2) / v1 if v1 else 0.0
     conf = min(0.9, 0.3 + 0.1 * v1) * (0.5 + 0.5 * margen)
-    if len(ranking) >= 4:  # objeto "cajón de sastre" con muchas actividades
-        conf *= 0.8
+    if len(ranking) >= 3:  # objeto "cajón de sastre" con actividades de varios sectores
+        conf *= 0.8 if len(ranking) == 3 else 0.65
     if ruido:
         conf *= 0.85
     return Clasificacion(s1, round(conf, 3), f"kw:{s1}[{','.join(hits[s1][:4])}]", "keywords")
