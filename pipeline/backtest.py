@@ -43,6 +43,25 @@ def norm_nombre(s: str | None) -> str:
     return " ".join(toks)
 
 
+# Palabras de sector que no distinguen un negocio de otro ("CLINICA DENTAL X" vs "CLINICA DENTAL Y").
+PALABRAS_SECTOR = {"CLINICA", "CLINICAS", "DENTAL", "DENTALES", "ODONTOLOGIA", "ODONTOLOGICA", "ODONTOLOGICO",
+                   "CENTRO", "CENTROS", "MEDICO", "MEDICA", "MEDICOS", "ESTETICA", "SALUD", "POLICLINICA",
+                   "RESTAURANTE", "RESTAURACION", "BAR", "CAFETERIA", "CAFE", "ASADOR", "TABERNA", "CERVECERIA",
+                   "PELUQUERIA", "GIMNASIO", "FITNESS", "ESTUDIO", "ACADEMIA", "ESCUELA", "INFANTIL", "GRUPO",
+                   "SERVICIOS", "GESTION", "Y", "DE", "DEL", "LA", "EL", "LOS", "LAS"}
+
+
+def nucleo(nombre: str) -> str:
+    """Parte distintiva de un nombre normalizado: sin palabras genéricas de sector."""
+    return " ".join(t for t in (nombre or "").split() if t not in PALABRAS_SECTOR)
+
+
+def score_distintivo(a: str, b: str) -> float:
+    """Similitud 0-100 sobre el núcleo distintivo. 0 si alguno no tiene núcleo."""
+    ca, cb = nucleo(a), nucleo(b)
+    return nombre_score(ca, cb) if ca and cb else 0.0
+
+
 def nombre_score(a: str, b: str) -> float:
     """Similitud 0-100. token_set_ratio salvo que el más corto tenga una sola palabra (evita que
     'PEPE' empareje con cualquier 'GRUPO PEPE ...')."""

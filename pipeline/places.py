@@ -18,6 +18,9 @@ lista SIN descontar el tramo gratuito mensual, así que el gasto real es igual o
 (USD por 1.000 llamadas, tramo 0-100k; verificar en https://developers.google.com/maps/billing-and-pricing/pricing):
 Text Search Pro 32 $; Place Details Enterprise + Atmosphere 40 $ (estimación conservadora).
 
+Modo `basico` (el que usa la fase 1 con fuentes oficiales): solo Text Search con ID y campos básicos, sin
+reseñas ni Place Details, y solo para las sociedades que no se han emparejado en ninguna fuente oficial.
+
 Requiere GOOGLE_PLACES_API_KEY (o GOOGLE_MAPS_API_KEY) y acceso a places.googleapis.com.
 """
 from __future__ import annotations
@@ -246,7 +249,9 @@ def _local_probable(domicilio: str | None) -> bool:
     return bool(re.search(r"\b(BAJO|BJ|LOCAL|LOC\.?|PLANTA BAJA|PB|NAVE)\b", d)) or not re.search(r"\d+\s*º|\bPISO\b|\bPLANTA [1-9]", d)
 
 
-def backtest_fila(row: dict, cli: PlacesClient) -> ResultadoPlaces:
+def backtest_fila(row: dict, cli: PlacesClient, basico: bool = False) -> ResultadoPlaces:
+    """basico=True: solo Text Search con campos básicos (ID, nombre, dirección, tipos, estado); sin
+    Place Details ni reseñas. `localizable` = emparejamiento de confianza alta o media."""
     nombre = nombre_limpio(row.get("denominacion"))
     muni = norm(row.get("municipio")) or ""
     res = ResultadoPlaces(empresa_key=row.get("empresa_key") or row.get("denominacion"))
@@ -272,6 +277,9 @@ def backtest_fila(row: dict, cli: PlacesClient) -> ResultadoPlaces:
     res.nombre_google = (c.get("displayName") or {}).get("text")
     res.direccion_google, res.business_status = c.get("formattedAddress"), c.get("businessStatus")
     res.tipos_google = "|".join(c.get("types") or [])
+    if basico:
+        res.localizable = res.confianza in ("alta", "media")
+        return res
     if res.confianza in ("alta", "media") and res.place_id:
         res.llamadas.append("details")
         d = cli.details(res.place_id)
@@ -290,14 +298,14 @@ def backtest_fila(row: dict, cli: PlacesClient) -> ResultadoPlaces:
 
 
 def run(cands: pd.DataFrame, interim: Path, presupuesto_usd: float, session=None, api_key: str | None = None,
-        precio_search: float = 32.0, precio_details: float = 40.0) -> tuple[pd.DataFrame, Gasto]:
+        precio_search: float = 32.0, precio_details: float = 40.0, basico: bool = False) -> tuple[pd.DataFrame, Gasto]:
     """Ejecuta el backtest sobre `cands` hasta agotar la lista o el presupuesto."""
     gasto = Gasto(Path(interim) / "places_ledger.json", presupuesto_usd, precio_search, precio_details)
     cli = PlacesClient(Path(interim) / "places_cache", gasto, api_key=api_key, session=session)
     out = []
     for row in cands.to_dict("records"):
         try:
-            r = backtest_fila(row, cli)
+            r = backtest_fila(row, cli, basico=basico)
         except PresupuestoAgotado as e:
             log.warning("Places: %s; se para tras %d sociedades", e, len(out))
             break

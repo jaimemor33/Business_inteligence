@@ -29,7 +29,20 @@ Dominios que hay que permitir en el proxy o el cortafuegos:
 | `api.anthropic.com` | solo si se usa la capa LLM (`--llm`) |
 
 
-## Fase 1 en un comando (datos reales → `research/BACKTEST.md`)
+## Fase 1 con fuentes oficiales (estrategia vigente)
+
+```bash
+python -m pipeline.cli -v fase1-oficial --desde 2025-04-01 --hasta 2026-03-31   # descarga todo y genera research/BACKTEST.md
+```
+
+Orden de verificación de cada sociedad:
+1. **REGCESS** (dental; `regcess.py`), o los centros sanitarios de la Comunidad de Madrid como alternativa.
+2. **Censo de locales de Madrid** (histórico mensual; `censo_borme.py`), con la señal temprana «Obras» + licencia «En tramitación».
+3. **Google Places en modo básico** (ID y campos básicos, sin reseñas, tope de 20 USD) solo para las sociedades sin emparejar.
+
+`descargas.py` baja automáticamente los datasets CKAN y el área de descarga del REGCESS. Cada métrica del informe lleva su fuente y la marca MEDIDO o ESTIMADO. Las fuentes, su estado de verificación y el análisis de Barcelona están en `research/FUENTES_FASE1.md`.
+
+## Fase 1 en un comando (variante anterior, Google con reseñas) (datos reales → `research/BACKTEST.md`)
 
 ```bash
 export ANTHROPIC_API_KEY=...        # clasificación con Claude (por defecto claude-opus-5-5, effort low; BI_LLM_MODEL para cambiarlo)

@@ -44,3 +44,18 @@ def test_pdf_real_2015():
     const = [a for a in an if a.evento_principal == "constitucion"]
     assert len(const) == 8 and all(a.objeto_social and a.capital and a.comienzo_operaciones for a in const)
     assert all(a.parse_ok for a in an)
+
+
+def test_cli_fase1_oficial_con_xml_real(tmp_path, monkeypatch):
+    """Humo: el comando completo corre sobre el XML real sin red (--sin-fetch) y escribe el informe."""
+    import shutil
+    from pipeline import cli
+    monkeypatch.setenv("BI_HASH_KEY", "test")
+    monkeypatch.delenv("GOOGLE_PLACES_API_KEY", raising=False)
+    d = tmp_path / "raw" / "borme" / "20260930"
+    d.mkdir(parents=True)
+    shutil.copy(REAL / "BORME-A-2026-189-28.xml", d)
+    cli.main(["--data-dir", str(tmp_path), "fase1-oficial", "--desde", "2026-09-30", "--hasta", "2026-09-30",
+              "--sin-fetch", "--sin-llm", "--research-dir", str(tmp_path / "research")])
+    txt = (tmp_path / "research" / "BACKTEST.md").read_text()
+    assert "REGCESS**: NO DISPONIBLE" in txt and "GOOGLE**: NO DISPONIBLE" in txt

@@ -31,7 +31,7 @@ def _expand(patterns: list[str] | None) -> list[Path]:
     out: list[Path] = []
     for p in patterns or []:
         if Path(p).is_dir():
-            hits = [str(x) for x in Path(p).iterdir() if x.suffix.lower() in (".csv", ".xls", ".xlsx")]
+            hits = [str(x) for x in Path(p).iterdir() if x.suffix.lower() in (".csv", ".xls", ".xlsx", ".json")]
         else:
             hits = glob.glob(p)
         out.extend(Path(h) for h in hits)
@@ -91,10 +91,11 @@ def cmd_backtest(args):
     print("\n".join(f"{k}: {v}" for k, v in paths.items()))
 
 
-def cmd_fase1(args):
-    """Fase 1 completa: BORME (XML) -> clasificación -> ruido -> Google Places -> research/BACKTEST.md."""
+def _borme_constituciones(args):
+    """Descarga (XML), parsea, clasifica (Claude en constituciones si hay clave) y marca el ruido.
+    Devuelve (constituciones preparadas, texto de método de clasificación)."""
     import os
-    from . import fase1, noise, places
+    from . import fase1, noise
     from .borme_fetch import BoeClient, fetch
     from .borme_parse import parse_dir
     from .classify import LLM_MODEL, apply_llm, classify_frame
@@ -121,6 +122,15 @@ def cmd_fase1(args):
     df.to_csv(P["processed"] / "borme_clasificado.csv", index=False)
     const = fase1.preparar(noise.marcar(df))
     const.to_csv(P["processed"] / "constituciones_fase1.csv", index=False)
+    return const, clasif
+
+
+def cmd_fase1(args):
+    """Fase 1 (variante Google con reseñas): BORME -> clasificación -> ruido -> Places -> research/BACKTEST.md."""
+    import os
+    from . import fase1, places
+    P = _paths(args)
+    const, clasif = _borme_constituciones(args)
     pl, gasto = None, None
     sectores = args.sectores.split(",") if args.sectores else None
     cands = fase1.muestra(const, args.muestra_por_celda, sectores=sectores)
@@ -138,6 +148,92 @@ def cmd_fase1(args):
     print(f"Informe: {p}")
     print(crit[["ciudad", "sector", "aperturas_nuevas_mes", "pct_localizable", "lag_mediana_dias", "veredicto"]]
           .head(40).to_string(index=False))
+
+
+def cmd_fase1_oficial(args):
+    """Fase 1 con fuentes oficiales primero: BORME -> REGCESS (dental) -> censo de Madrid -> Google (básico)."""
+    import os
+    from . import censo_borme, fase1_oficial as F, places, regcess
+    from .madrid_census import load_panel
+    P = _paths(args)
+    if not args.sin_fetch and not (args.regcess or args.censo):
+        from .descargas import descargar_todo, separar_censo
+        d = descargar_todo(P["raw"])
+        cen_files, lic_files = separar_censo(d["censo_historico"] + d["censo_actual"])
+        args.censo = [str(x) for x in cen_files]
+        args.licencias_censo = args.licencias_censo or [str(x) for x in lic_files]
+        args.regcess = [str(x) for x in d["regcess_ministerio"] + d["centros_sanitarios_cam"]]
+    const, clasif = _borme_constituciones(args)
+    fuentes = {"BORME": f"{const['mes'].nunique()} meses, {len(const)} constituciones (provincias {args.provincias})"}
+    mad = const[const["ciudad"] == "MADRID"]
+    base = mad[mad["objetivo"] & (mad["ruido_tipo"] == "apertura_nueva")]
+    out = {"volumen": F.volumen(const)}
+    meta = {"clasif": clasif, "pct_generico": float((mad["sector"] == "generico").mean()) if len(mad) else float("nan"),
+            "google_tope": args.google_tope}
+    # 1. REGCESS (dental, toda la Comunidad de Madrid)
+    m_reg = None
+    reg_files = _expand(args.regcess) if args.regcess else []
+    if reg_files:
+        snaps = regcess.load_snapshots(reg_files)
+        cen, metodo = regcess.centros(snaps)
+        sl = const[(const["cod_provincia"].astype(str).str.zfill(2) == "28") & (const["sector"] == "dental")
+                   & (const["ruido_tipo"] == "apertura_nueva")]
+        m_reg = regcess.cruzar(sl, cen)
+        corte = snaps["snapshot"].max() if snaps["snapshot"].notna().any() else pd.Timestamp.today()
+        out["regcess_resumen"], out["regcess_detalle"] = regcess.resumen(m_reg, corte), m_reg
+        meta["regcess_metodo"] = metodo
+        fuentes["REGCESS"] = f"{len(reg_files)} fichero(s), {len(cen)} centros dentales; {metodo}"
+    else:
+        fuentes["REGCESS"] = "NO DISPONIBLE en esta ejecución (pasar --regcess)"
+    # 2. Censo de locales + licencias (municipio de Madrid)
+    m_c = None
+    censo_files = _expand(args.censo) if args.censo else []
+    if len(censo_files) >= 2:
+        panel = load_panel(censo_files)
+        hist = censo_borme.historia_locales(panel)
+        m_c = censo_borme.cruzar_sl(base, hist)
+        out["censo_resumen"], out["censo_detalle"] = F.resumen_censo(m_c), m_c
+        ok = m_c[m_c["match"].fillna(False).astype(bool)]
+        out["censo_muestra_revision"] = ok.groupby("nivel_match", group_keys=False).apply(
+            lambda g: g.sample(min(len(g), 30), random_state=42))
+        fuentes["CENSO"] = f"{panel['mes'].nunique()} meses ({panel['mes'].min()} a {panel['mes'].max()}), {len(hist)} locales"
+        lic_files = _expand(args.licencias_censo) if args.licencias_censo else []
+        if lic_files:
+            lic = censo_borme.load_licencias_censo(lic_files)
+            out["senales"], out["senal_resumen"] = censo_borme.senal_temprana(panel, lic, m_c)
+            fuentes["CENSO-LICENCIAS"] = f"{len(lic)} licencias, {int(lic['en_tramitacion'].sum())} en tramitación"
+        else:
+            fuentes["CENSO-LICENCIAS"] = "NO DISPONIBLE (pasar --licencias-censo)"
+    else:
+        fuentes["CENSO"] = "NO DISPONIBLE (hacen falta ≥ 2 meses en --censo)"
+    # 3. Google solo para las no emparejadas
+    comb = F.combinar(out["volumen"], m_reg, m_c, None, base)
+    pl = None
+    if os.environ.get("GOOGLE_PLACES_API_KEY") or os.environ.get("GOOGLE_MAPS_API_KEY"):
+        sin = base[base["empresa_key"].isin(comb.loc[~comb["ok_oficial"], "empresa_key"])]
+        partes = [g.sample(min(len(g), args.google_por_sector), random_state=7) for _, g in sin.groupby("sector")]
+        cands = pd.concat(partes) if partes else sin.head(0)
+        pl, gasto = places.run(cands, P["interim"], args.google_tope, basico=True)
+        out["google_detalle"] = pl
+        meta.update(n_google=len(pl), google_usd=gasto.usd)
+        fuentes["GOOGLE"] = f"{len(pl)} sociedades sin emparejar consultadas (básico, sin reseñas)"
+    else:
+        fuentes["GOOGLE"] = "NO DISPONIBLE (GOOGLE_PLACES_API_KEY no definida)"
+    comb = F.combinar(out["volumen"], m_reg, m_c, pl, base)
+    out["combinado"] = comb
+    out["criterios"] = F.criterios(out["volumen"], comb, m_c, m_reg)
+    meta["fuentes"] = fuentes
+    p = F.informe(out, meta, Path(args.research_dir))
+    print(f"Informe: {p}")
+    if len(out["criterios"]):
+        print(out["criterios"][["sector", "veredicto"]].to_string(index=False))
+
+
+def cmd_descargar(args):
+    from .descargas import descargar_todo
+    res = descargar_todo(_paths(args)["raw"])
+    for k, v in res.items():
+        print(f"{k}: {len(v)} ficheros")
 
 
 def cmd_all(args):
@@ -207,6 +303,24 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--sectores", default=None, help="limitar el backtest de Places a estos sectores (coma)")
     sp.add_argument("--research-dir", default="research")
     sp.set_defaults(func=cmd_fase1)
+
+    sp = sub.add_parser("descargar", help="descarga REGCESS, centros sanitarios CAM, censo y licencias de Madrid")
+    sp.set_defaults(func=cmd_descargar)
+
+    sp = sub.add_parser("fase1-oficial", help="fase 1 con REGCESS + censo de Madrid + Google (básico) -> research/BACKTEST.md")
+    fechas(sp, True)
+    sp.set_defaults(provincias="MADRID")
+    sp.add_argument("--sin-fetch", action="store_true")
+    sp.add_argument("--pausa", type=float, default=1.0)
+    sp.add_argument("--sin-llm", action="store_true")
+    sp.add_argument("--max-llm", type=int, default=None)
+    sp.add_argument("--regcess", nargs="*", help="ficheros o carpeta con las descargas del REGCESS / CAM (xlsx, csv, json)")
+    sp.add_argument("--censo", nargs="*", help="CSV mensuales del censo de locales (histórico 209548)")
+    sp.add_argument("--licencias-censo", nargs="*", help="fichero(s) de locales con información de licencias")
+    sp.add_argument("--google-tope", type=float, default=20.0, help="tope duro de gasto en Google Places (USD)")
+    sp.add_argument("--google-por-sector", type=int, default=40)
+    sp.add_argument("--research-dir", default="research")
+    sp.set_defaults(func=cmd_fase1_oficial)
     return p
 
 
