@@ -183,3 +183,53 @@ def md_table(df, floatfmt: str = "{:.1f}", max_rows: int | None = None) -> str:
     for row in df.itertuples(index=False):
         lines.append("| " + " | ".join(fmt(v) for v in row) + " |")
     return "\n".join(lines) + "\n"
+
+
+# --------------------------------------------------------------------------- direcciones
+
+TIPOS_VIA = {
+    "C/": "CALLE", "C": "CALLE", "CL": "CALLE", "CALLE": "CALLE", "CALL": "CALLE", "CLL": "CALLE",
+    "AV": "AVENIDA", "AVD": "AVENIDA", "AVDA": "AVENIDA", "AVENIDA": "AVENIDA", "AVDA.": "AVENIDA",
+    "PZA": "PLAZA", "PL": "PLAZA", "PLZA": "PLAZA", "PLAZA": "PLAZA", "PZ": "PLAZA",
+    "PS": "PASEO", "Pº": "PASEO", "PO": "PASEO", "PASEO": "PASEO", "PSO": "PASEO",
+    "CTRA": "CARRETERA", "CRTA": "CARRETERA", "CARRETERA": "CARRETERA", "GTA": "GLORIETA", "GLORIETA": "GLORIETA",
+    "RDA": "RONDA", "RONDA": "RONDA", "TRAV": "TRAVESIA", "TRVA": "TRAVESIA", "TRAVESIA": "TRAVESIA",
+    "CMNO": "CAMINO", "CAMINO": "CAMINO", "CM": "CAMINO", "PJE": "PASAJE", "PASAJE": "PASAJE",
+    "CUSTA": "CUESTA", "CUESTA": "CUESTA", "COSTANILLA": "COSTANILLA", "CTNILLA": "COSTANILLA",
+    "BULEVAR": "BULEVAR", "BLVR": "BULEVAR", "POL": "POLIGONO", "POLIGONO": "POLIGONO", "PG": "POLIGONO",
+    "URB": "URBANIZACION", "URBANIZACION": "URBANIZACION", "PQUE": "PARQUE", "PARQUE": "PARQUE",
+}
+_STOP_VIA = {"DE", "DEL", "LA", "LAS", "LOS", "EL", "Y", "D", "L"}
+
+
+def street_key(nombre_via: str | None) -> str:
+    """Nombre de vía normalizado para cruzar fuentes: sin tipo de vía, artículos ni signos."""
+    s = norm(nombre_via)
+    s = re.sub(r"[^A-ZÑ0-9 ]", " ", s.replace("C/", "CALLE "))
+    toks = s.split()
+    while toks and toks[0] in TIPOS_VIA:
+        toks = toks[1:]
+    return " ".join(t for t in toks if t not in _STOP_VIA)
+
+
+def split_address(dom: str | None) -> tuple[str, str | None]:
+    """'C/ ALCALA 123 BAJO (MADRID)' -> ('ALCALA', '123'). Número = primer número tras el nombre de vía."""
+    s = norm(dom)
+    s = re.sub(r"\([^)]*\)\s*\.?$", "", s)          # municipio
+    s = re.sub(r"\b(N[º°O]\.?|NUM\.?|NUMERO)\s*", " ", s)
+    s = s.replace("C/", "CALLE ")
+    m = re.search(r"^(.*?[A-ZÑ][A-ZÑ .'\-/]*?)[\s,]+(\d{1,4})(?!\d)", s)
+    if not m:
+        return street_key(s), None
+    return street_key(m.group(1)), str(int(m.group(2)))
+
+
+def address_key(via: str | None, numero=None) -> str | None:
+    """Clave 'VIA|NUM' a partir de (vía, número) o de una dirección completa en `via`."""
+    if numero is None or (isinstance(numero, float) and numero != numero) or str(numero).strip() == "":
+        calle, num = split_address(via)
+    else:
+        calle = street_key(via)
+        m = re.search(r"\d+", str(numero))
+        num = str(int(m.group(0))) if m else None
+    return f"{calle}|{num}" if calle and num else None
