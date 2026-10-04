@@ -1,0 +1,47 @@
+sector,bloque,confianza,ventana,ticket,volumen,detect,proveedores,verif,competencia,riesgo,score,score_ajustado
+Residencia de mayores (+ reformas),Sociosanitario,A,5,5,2,4,4,3,2,4,3.83,3.83
+Clínica dental independiente,Salud,A,4,4,3,4,4,4,3,4,3.78,3.78
+Restaurante independiente,Hostelería,B,3,4,5,3,5,3,3,4,3.8,3.75
+Hotel (apertura + reforma),Alojamiento,B,5,5,2,3,4,3,2,5,3.73,3.68
+Cocina central / catering,Hostelería,C,5,5,2,4,3,3,4,4,3.82,3.62
+Pádel indoor,Otros,C,5,4,2,4,3,4,5,4,3.82,3.62
+Escuela infantil 0-3,Educación,B,5,3,2,4,3,3,5,5,3.64,3.59
+Fertilidad independiente,Salud alta,B,5,5,1,3,3,3,5,4,3.59,3.54
+Longevidad / preventiva premium,Salud alta,C,5,5,1,3,4,3,5,3,3.69,3.49
+Centro de día,Sociosanitario,C,5,4,2,3,4,3,4,4,3.67,3.47
+Industria alimentaria artesana,Industria,C,4,4,2,4,3,4,5,5,3.67,3.47
+Boutique fitness (pilates reformer),Fitness,B,4,3,3,3,3,4,5,4,3.47,3.42
+Gimnasio independiente / franquicia,Fitness,B,5,4,2,3,3,3,3,4,3.45,3.4
+Taller mecánico,Servicios,C,4,3,3,3,4,4,4,4,3.55,3.35
+Senior living,Sociosanitario,C,5,5,1,3,4,3,2,4,3.53,3.33
+Farmacia (transmisión / reforma),Retail,B,4,3,4,2,4,3,4,2,3.37,3.32
+Self-storage,Otros,C,4,4,2,4,2,4,5,5,3.52,3.32
+Cafetería / specialty coffee,Hostelería,B,3,3,4,3,4,3,3,4,3.35,3.3
+Residencia estudiantes / coliving,Alojamiento,C,5,5,1,3,3,3,3,5,3.5,3.3
+Coworking,Servicios,C,4,4,2,3,4,3,3,4,3.4,3.2
+FP privada,Educación,C,4,5,1,3,3,3,4,5,3.37,3.17
+Veterinaria,Salud,C,4,3,2,3,4,3,4,4,3.32,3.12
+Spa / wellness,Belleza,C,5,5,1,3,2,3,3,4,3.3,3.1
+Obrador / panadería-cafetería,Hostelería,C,3,3,4,3,3,3,4,4,3.27,3.07
+Colegio privado,Educación,C,5,5,1,3,2,2,3,5,3.27,3.07
+Centro de lavado,Otros,C,4,4,2,3,2,3,4,4,3.17,2.97
+Diagnóstico por imagen (prov. secundarios),Salud alta,B,3,5,1,3,2,3,4,4,2.97,2.92
+Hostal,Alojamiento,C,3,3,2,3,4,3,4,4,3.12,2.92
+Bar (incl. traspasos),Hostelería,B,2,2,5,2,4,2,2,3,2.8,2.75
+Medicina estética,Salud,B,2,3,3,2,4,3,3,3,2.8,2.75
+Vivienda de uso turístico,Alojamiento,B,1,1,4,4,4,4,3,2,2.78,2.73
+Centro de estética,Belleza,C,2,2,4,2,4,3,4,2,2.82,2.62
+Academia,Educación,C,2,2,4,2,3,3,4,3,2.72,2.52
+Tienda especializada,Retail,C,2,2,3,3,3,3,4,3,2.72,2.52
+Óptica,Salud,C,2,3,2,3,2,4,4,4,2.7,2.5
+Lavandería autoservicio,Servicios,C,2,3,2,3,2,4,4,4,2.7,2.5
+Supermercado franquiciado,Retail,B,2,1,3,3,2,4,3,4,2.48,2.43
+Heladería / yogurtería,Hostelería,C,2,3,2,2,3,3,4,4,2.62,2.42
+Peluquería / barbería,Belleza,B,1,2,4,1,4,3,4,2,2.47,2.42
+Restaurante franquicia,Hostelería,B,1,2,3,3,2,4,3,4,2.43,2.38
+Dark kitchen,Hostelería,C,2,4,1,2,3,3,4,3,2.57,2.37
+Fisioterapia,Salud,C,2,2,4,2,2,3,4,3,2.57,2.37
+Laboratorio clínico,Salud alta,B,2,2,1,2,2,3,4,4,2.17,2.12
+Audiología,Salud,C,1,2,2,3,1,4,4,4,2.2,2.0
+Podología,Salud,C,2,2,2,1,2,3,4,3,2.12,1.92
+Psicología,Salud,C,1,1,3,1,1,2,5,2,1.71,1.51
