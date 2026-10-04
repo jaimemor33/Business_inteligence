@@ -306,11 +306,13 @@ Los cinco factores multiplicativos llevan casi todo el peso. Coste, competencia 
 - `borme_fetch` y `borme_parse`: descarga los sumarios de la API del BOE y los PDF de la sección A por provincia, y extrae los actos (constitución, cambio de objeto, de domicilio y de denominación) con objeto social, CNAE, domicilio, capital, comienzo de operaciones, inscripción y publicación. **No guarda los nombres de los administradores.**
 - `classify`: reglas de CNAE y palabras clave para los 46 sectores, más ruido (holdings, patrimoniales), con capa LLM opcional para los casos dudosos. Guarda el texto original y la confianza.
 - `metrics`: actos por mes, sector y provincia; capital; % de domicilio tipo local frente a piso u oficina; retraso escritura → publicación (mediana y percentiles); % de ruido.
-- `madrid_census` y `backtest`: aperturas reales en el censo, meses previos en "obras" y cruce con el BORME por rótulo, denominación y dirección.
+- `madrid_census`, `madrid_licencias` y `backtest`: aperturas reales en el censo, meses previos en "obras", cruce con el BORME por rótulo, denominación y dirección, y lag desde la licencia o declaración responsable.
+- Estado: 75 tests pasan, pero **solo con fixtures sintéticos**. Los riesgos de parseo previstos con los PDF reales (columnas, cabeceras, variantes de los actos) están listados en `pipeline/README.md`.
+- Tiempo estimado: Madrid y Barcelona, 6 meses, unos 15 minutos de descarga y 1-1,5 h de parseo; toda España, 2-3 h de descarga.
 
 **Novedad que hay que comprobar primero.** Según la documentación del BOE, la **API v2.0 del BORME (28-05-2026) añade XML y HTML para la Sección Primera** [DATO, ver transversal §C.1]. Si el XML trae los actos estructurados, el parseo de PDF pasa a ser un plan B.
 
-**Segunda fuente municipal que incorporar al backtest.** El dataset **300193** (licencias y declaraciones responsables de Madrid, mensual, desde 2015) [DATO] probablemente da la señal de obra más temprana a nivel de local. Conviene añadirlo como tercera fuente del cruce. Está pendiente en el código.
+**Segunda fuente municipal en el backtest.** El dataset **300193** (licencias y declaraciones responsables de Madrid, mensual, desde 2015) [DATO] probablemente da la señal de obra más temprana a nivel de local. Ya está incorporado como tercera fuente del cruce (`pipeline/madrid_licencias.py`, opción `--licencias`), con el esquema supuesto y pendiente de validar con el fichero real. Lo mismo ocurre con la ruta XML de la API v2.0.
 
 **Preguntas que la fase 3 responde en un día de ejecución:**
 1. Retraso real entre escritura y publicación por provincia, con su mediana y p90. **Es lo que más mueve la ventana.**
