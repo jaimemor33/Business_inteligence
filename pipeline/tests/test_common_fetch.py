@@ -100,4 +100,6 @@ def test_fetch_cache_idempotente(fix, tmp_path, monkeypatch):
 def test_fetch_descarga_xml(fix, tmp_path):
     client = BoeClient(tmp_path / "raw", min_interval=0, session=FakeSession(fix))
     (it,) = fetch(dt.date(2026, 7, 15), dt.date(2026, 7, 15), None, tmp_path / "raw", client=client)
+    assert it.path_xml.endswith("BORME-A-2026-133-28.xml") and not it.path  # por defecto, PDF solo si falla el XML
+    (it,) = fetch(dt.date(2026, 7, 15), dt.date(2026, 7, 15), None, tmp_path / "raw", client=client, formato="ambos")
     assert it.path_xml.endswith("BORME-A-2026-133-28.xml") and it.path.endswith(".pdf")

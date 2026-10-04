@@ -260,8 +260,12 @@ def _append_manifest(raw_dir: Path, items: Iterable[ItemA]):
 
 
 def fetch(desde: dt.date, hasta: dt.date, provincias: set[str] | None, raw_dir: Path,
-          client: BoeClient | None = None, refresh: bool = False, solo_sumarios: bool = False) -> list[ItemA]:
-    """Descarga sumarios y PDF de la sección A para el rango y provincias (códigos INE) dados."""
+          client: BoeClient | None = None, refresh: bool = False, solo_sumarios: bool = False,
+          formato: str = "xml") -> list[ItemA]:
+    """Descarga sumarios y XML/PDF de la sección A para el rango y provincias (códigos INE) dados.
+
+    formato='xml' (por defecto): XML oficial y el PDF solo si el XML falla; 'ambos': los dos.
+    """
     client = client or BoeClient(raw_dir)
     done: list[ItemA] = []
     for fecha in daterange(desde, hasta):
@@ -283,10 +287,11 @@ def fetch(desde: dt.date, hasta: dt.date, provincias: set[str] | None, raw_dir: 
                 it.path_xml = str(px) if px else ""
             except Exception as e:
                 log.warning("XML %s: %s", it.identificador, e)
-            try:
-                it.path = str(client.pdf(it, refresh=refresh))
-            except Exception as e:
-                log.error("PDF %s: %s", it.identificador, e)
+            if formato == "ambos" or not it.path_xml:
+                try:
+                    it.path = str(client.pdf(it, refresh=refresh))
+                except Exception as e:
+                    log.error("PDF %s: %s", it.identificador, e)
             if it.path or it.path_xml:
                 done.append(it)
         _append_manifest(raw_dir, done)

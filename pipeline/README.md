@@ -28,6 +28,42 @@ Dominios que hay que permitir en el proxy o el cortafuegos:
 | `datos.madrid.es` | descarga manual o automática del censo de locales (200085) y de las licencias (300193) |
 | `api.anthropic.com` | solo si se usa la capa LLM (`--llm`) |
 
+
+## Fase 1 en un comando (datos reales → `research/BACKTEST.md`)
+
+```bash
+export ANTHROPIC_API_KEY=...        # clasificación con Claude (por defecto claude-opus-5-5, effort low; BI_LLM_MODEL para cambiarlo)
+export GOOGLE_PLACES_API_KEY=...    # backtest de apertura
+python -m pipeline.cli -v fase1 --desde 2025-04-01 --hasta 2026-03-31 --provincias MADRID,BARCELONA \
+       --places-presupuesto 100 --muestra-por-celda 60
+```
+
+Qué hace cada paso:
+
+1. **Descarga** el sumario y el **XML oficial** de la sección A de cada día; el PDF solo se baja si falla el XML.
+2. **Parsea** los anuncios. Los administradores y el socio único se guardan como seudónimo HMAC (`admins_id`, `socio_unico_id`), nunca el nombre. La clave está en `data/.hash_key` o en `$BI_HASH_KEY`.
+3. **Clasifica con Claude** todas las constituciones (categoría `generico` para los objetos "cajón de sastre"). El resto de actos se clasifica con reglas.
+4. **Filtro de ruido** (`noise.py`):
+   - `expansion_mismo_sector`: un administrador ya administra otra sociedad del mismo sector.
+   - `filial_de_grupo`: administrador o socio único persona jurídica.
+   - `holding_patrimonial`.
+   - `apertura_nueva`: el resto.
+5. **Google Places** (`places.py`) sobre una muestra aleatoria estratificada de aperturas nuevas por sector × ciudad:
+   - Text Search (nombre, y si no encuentra nada, tipo de negocio + dirección) y puntuación de emparejamiento con nivel alta, media o baja.
+   - Place Details con reseñas: la fecha de apertura aproximada es la reseña más antigua. Es EXACTA solo si el lugar tiene ≤ 5 reseñas; si no, es una cota superior.
+   - Tope duro de gasto, registrado en `data/interim/places_ledger.json` a precio de lista. Las respuestas se guardan en caché y no se vuelven a pagar.
+6. **Informe** (`fase1.py`): `research/BACKTEST.md` y `research/backtest/*.csv` con volumen mensual (total y tras ruido), % genéricos, % reestructuraciones, % localizable con IC95, desfase BORME → apertura (p25/mediana/p75) y los 3 criterios de descarte evaluados.
+
+Coste orientativo de una ejecución de 12 meses en Madrid y Barcelona (ESTIMADO):
+- **Claude**: unas 45.000-50.000 constituciones; unos 140 USD con Opus 5.5 en lote, unos 25 USD con Haiku 4.5. `--max-llm` pone un tope.
+- **Places**: unas 2.000 sociedades; como mucho unos 140 USD a precio de lista, normalmente menos por el tramo gratuito mensual (5.000 Text Search Pro y 1.000 Enterprise). El tope por defecto es 100 USD.
+- **Descarga**: unos 500 XML, unos 10 minutos.
+
+**Validación con datos reales** (`tests/test_real.py`):
+- XML oficial de Madrid del 30-09-2026: los 6 anuncios bien separados. Antes se perdían 3, porque el XML no viene ordenado por número.
+- Sumario real del BORME.
+- PDF real de Cáceres (2015), con 30 de 30 anuncios y 8 de 8 constituciones completas. Este test se ejecuta solo con `BI_REAL_PDF`, porque el PDF contiene nombres.
+
 ## Uso
 
 Todos los comandos se ejecutan desde la raíz del repositorio. Los datos van a `./data` (o a `--data-dir` o `$BI_DATA_DIR`).

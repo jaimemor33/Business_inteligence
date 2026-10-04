@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from .common import MESES, norm, parse_fecha, parse_importe, provincia_name, strip_accents
+from .common import MESES, norm, parse_fecha, parse_importe, provincia_name, pseudonimo, strip_accents
 
 log = logging.getLogger(__name__)
 
@@ -316,10 +316,12 @@ def es_persona_juridica(nombre: str) -> bool:
     return bool(RE_PERSONA_JURIDICA.search(norm(nombre).rstrip(" .")))
 
 
-def parse_cargos(arg: str) -> list[tuple[str, bool]]:
+def parse_cargos(arg: str, con_id: bool = False) -> list[tuple]:
     """'Adm. Unico: PEREZ GARCIA JUAN. Apoderado: A SL;B C D.' -> [('Adm. Unico', False), ('Apoderado', True), ...]
 
-    Devuelve (etiqueta_del_cargo, es_persona_juridica) por cada titular. Los nombres se descartan.
+    Devuelve (etiqueta_del_cargo, es_persona_juridica) por cada titular. Con con_id=True añade un
+    tercer elemento: el seudónimo HMAC si es persona física o la denominación normalizada si es
+    persona jurídica. Los nombres de personas físicas nunca salen de esta función.
     """
     ms = list(RE_ETIQUETA_CARGO.finditer(arg))
     out = []
@@ -329,7 +331,11 @@ def parse_cargos(arg: str) -> list[tuple[str, bool]]:
         for nombre in re.split(r"\s*;\s*", valor):
             nombre = nombre.strip(" .")
             if nombre:
-                out.append((m.group(1).strip(), es_persona_juridica(nombre)))
+                pj = es_persona_juridica(nombre)
+                item = (m.group(1).strip(), pj)
+                if con_id:
+                    item += ((norm(nombre).rstrip(" .") if pj else pseudonimo(nombre)),)
+                out.append(item)
     return out
 
 
@@ -383,7 +389,7 @@ def parse_datos_registrales(arg: str) -> dict:
 
 @dataclass
 class Anuncio:
-    """Una fila de salida: un anuncio (una sociedad) de un BORME. Sin datos de personas físicas."""
+    """Una fila de salida: un anuncio (una sociedad) de un BORME. Sin nombres de personas físicas (solo seudónimos HMAC)."""
     fecha_publicacion: dt.date | None
     provincia: str | None
     cod_provincia: str | None
@@ -411,6 +417,8 @@ class Anuncio:
     n_cargos_pj: int = 0             # nombrados que son personas jurídicas
     admin_persona_juridica: bool = False
     socio_unico_persona_juridica: bool | None = None
+    admins_id: str = ""              # administradores nombrados: seudónimo HMAC (persona física) o denominación (PJ), '|'
+    socio_unico_id: str | None = None  # ídem para el socio único
     parse_ok: bool = True
     parse_warnings: str = ""
     fuente: str = ""                 # 'xml' | 'pdf' | 'txt'
@@ -444,6 +452,7 @@ def parse_anuncio(num: int, texto: str, meta: dict | None = None) -> Anuncio:
     tipos = []
     nombrados = cesados = pj = 0
     admin_pj = False
+    admins: list[str] = []
     for tipo, arg in split_actos(cuerpo):
         tipos.append(tipo)
         if tipo == "constitucion":
@@ -468,23 +477,25 @@ def parse_anuncio(num: int, texto: str, meta: dict | None = None) -> Anuncio:
         elif tipo == "datos_registrales":
             a.__dict__.update(parse_datos_registrales(arg))
         if tipo in ACTOS_CON_CARGOS and tipo != "constitucion":
-            cargos = parse_cargos(arg)
+            cargos = parse_cargos(arg, con_id=True)
             if tipo in ("nombramientos", "reelecciones"):
                 nombrados += len(cargos)
-                pj += sum(1 for _, es_pj in cargos if es_pj)
-                admin_pj |= any(es_pj and norm(lbl).startswith("ADM") for lbl, es_pj in cargos)
+                pj += sum(1 for _, es_pj, _ in cargos if es_pj)
+                admin_pj |= any(es_pj and norm(lbl).startswith("ADM") for lbl, es_pj, _ in cargos)
+                admins.extend(i for lbl, _, i in cargos if i and norm(lbl).startswith(("ADM", "CONSEJ", "PRESID")))
             elif tipo in ("ceses_dimisiones", "revocaciones", "cancelacion_nombramientos"):
                 cesados += len(cargos)
             elif tipo in ("declaracion_unipersonalidad", "sociedad_unipersonal"):
-                socios = [es_pj for lbl, es_pj in cargos if "SOCIO" in norm(lbl)]
+                socios = [(es_pj, i) for lbl, es_pj, i in cargos if "SOCIO" in norm(lbl)]
                 if socios:
-                    a.socio_unico_persona_juridica = socios[-1]
+                    a.socio_unico_persona_juridica, a.socio_unico_id = socios[-1]
     a.tipos_acto = "|".join(dict.fromkeys(tipos))
     a.evento_principal = next((t for t in PRIORIDAD if t in tipos), tipos[0] if tipos else None)
     cnaes = parse_cnae(a.objeto_social)
     a.cnae = "|".join(cnaes) or None
     a.n_cargos_nombrados, a.n_cargos_cesados, a.n_cargos_pj = nombrados, cesados, pj
     a.admin_persona_juridica = admin_pj
+    a.admins_id = "|".join(dict.fromkeys(admins))
     if "datos_registrales" not in tipos:
         warnings.append("sin_datos_registrales")
     if "constitucion" in tipos and not a.objeto_social:
@@ -521,10 +532,49 @@ def parse_text(text: str, meta: dict | None = None) -> list[Anuncio]:
     return [parse_anuncio(n, t, meta) for n, t in segment(text)]
 
 
+def xml_anuncios(path: str | Path) -> tuple[dict, list[tuple[int, str]]]:
+    """XML oficial de la sección A (API v2.0, formato verificado con BORME-A-2026-189-28):
+    <documento><metadatos>...</metadatos><texto><p class="articulo">NNN - DENOMINACION.</p>
+    <p class="parrafo">actos...</p>...</texto></documento>.
+
+    Devuelve (meta, [(nº, texto del anuncio)]). Los anuncios NO vienen ordenados por número, así
+    que aquí no se exige número creciente (a diferencia del PDF). Lista vacía si no hay ese formato.
+    """
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(Path(path).read_bytes())
+    meta: dict = {}
+    md = root.find("metadatos")
+    if md is not None:
+        ident = (md.findtext("identificador") or "").strip()
+        m = RE_FICHERO.search(ident)
+        if m:
+            meta.update(borme_id=ident, cod_provincia=m.group(3), provincia=provincia_name(m.group(3)))
+        fp = (md.findtext("fecha_publicacion") or "").strip()
+        if re.fullmatch(r"\d{8}", fp):
+            meta["fecha_publicacion"] = dt.date(int(fp[:4]), int(fp[4:6]), int(fp[6:]))
+    out: list[tuple[int, str]] = []
+    cur: list | None = None
+    for e in root.iter("p"):
+        txt = re.sub(r"\s+", " ", "".join(e.itertext())).strip()
+        if e.get("class") == "articulo":
+            m = RE_ANUNCIO.match(txt)
+            cur = [int(m.group(1)), [txt]] if m else None
+            if cur:
+                out.append(cur)
+        elif cur is not None and txt:
+            cur[1].append(txt)
+    return meta, [(n, " ".join(parts)) for n, parts in out]
+
+
 def parse_file(path: str | Path, engine: str = "auto") -> list[Anuncio]:
-    """Parsea un PDF (o un .txt con el texto ya extraído, útil para pruebas)."""
+    """Parsea un XML oficial, un PDF o un .txt con el texto ya extraído (útil para pruebas)."""
     path = Path(path)
     suf = path.suffix.lower()
+    if suf == ".xml":
+        meta_xml, items = xml_anuncios(path)
+        if items:
+            meta = {**meta_from_path(path), **meta_xml}
+            return [parse_anuncio(n, t, meta) for n, t in items]
     if suf == ".txt":
         text = path.read_text(encoding="utf-8")
     elif suf == ".xml":

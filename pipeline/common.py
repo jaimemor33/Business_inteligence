@@ -233,3 +233,38 @@ def address_key(via: str | None, numero=None) -> str | None:
         m = re.search(r"\d+", str(numero))
         num = str(int(m.group(0))) if m else None
     return f"{calle}|{num}" if calle and num else None
+
+
+# --------------------------------------------------------------------------- seudonimización (RGPD)
+
+_HASH_KEY: bytes | None = None
+
+
+def hash_key() -> bytes:
+    """Clave HMAC local: $BI_HASH_KEY o data/.hash_key (se crea al primer uso; nunca se commitea).
+
+    Con la clave, el mismo nombre da siempre el mismo identificador (permite cruzar administradores
+    entre sociedades) y, sin ella, el identificador no se puede revertir por diccionario.
+    """
+    global _HASH_KEY
+    if _HASH_KEY is None:
+        env = os.environ.get("BI_HASH_KEY")
+        if env:
+            _HASH_KEY = env.encode()
+        else:
+            f = ensure(data_dir()) / ".hash_key"
+            if not f.exists():
+                import secrets
+                f.write_text(secrets.token_hex(32))
+            _HASH_KEY = f.read_text().strip().encode()
+    return _HASH_KEY
+
+
+def pseudonimo(nombre: str | None) -> str | None:
+    """Nombre de persona -> identificador HMAC-SHA256 truncado (16 hex). No guarda el nombre."""
+    import hashlib
+    import hmac
+    k = norm_key(nombre)
+    if not k:
+        return None
+    return hmac.new(hash_key(), k.encode("utf-8"), hashlib.sha256).hexdigest()[:16]

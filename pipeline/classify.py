@@ -303,12 +303,14 @@ def classify_frame(df: pd.DataFrame, objeto_col: str = "objeto_social", den_col:
 
 
 # --------------------------------------------------------------------------- capa LLM (opcional)
-# Modelo barato y actual para clasificación de textos cortos: Claude Haiku 4.5. Salida estructurada
+# Modelo por defecto: Claude Opus 5.5 con effort "low" (clasificación corta; el pensamiento no se puede
+# desactivar en este modelo). Para abaratar ~5x: BI_LLM_MODEL=claude-haiku-4-5. Salida estructurada
 # con JSON Schema (output_config.format) para garantizar JSON válido con un sector del catálogo.
 # Más de `batch_threshold` casos -> Message Batches API (50 % más barata, asíncrona).
-LLM_MODEL = os.environ.get("BI_LLM_MODEL", "claude-haiku-4-5")
-PROMPT_VERSION = "v1"
-SECTORES_LLM = [s for s in TODOS_SECTORES if s != "sin_clasificar"] + ["sin_clasificar"]
+LLM_MODEL = os.environ.get("BI_LLM_MODEL", "claude-opus-5-5")
+LLM_EFFORT = os.environ.get("BI_LLM_EFFORT", "low")
+PROMPT_VERSION = "v2"
+SECTORES_LLM = [s for s in TODOS_SECTORES if s != "sin_clasificar"] + ["generico", "sin_clasificar"]
 
 SYSTEM_PROMPT = f"""Clasificas sociedades españolas recién inscritas en el BORME según el tipo de local que van a abrir.
 Recibes la denominación y el objeto social. Devuelve el sector principal (la actividad que más probablemente
@@ -319,7 +321,9 @@ Sectores permitidos: {", ".join(SECTORES_LLM)}.
 - "ruido": holdings, tenencia de participaciones, sociedades patrimoniales, alquiler o compraventa de inmuebles,
   inversión, consultoría genérica, comercio online sin local, software, intermediación.
 - "otros": actividad real fuera de los sectores listados (construcción, transporte de viajeros, agricultura...).
-- "sin_clasificar": el texto no permite decidir.
+- "generico": objeto social "cajón de sastre" o tan amplio/ambiguo (enumera muchas actividades sin relación,
+  o es una fórmula genérica) que no permite asignar un sector, y la denominación tampoco lo aclara.
+- "sin_clasificar": falta el texto o es ilegible.
 Los objetos sociales "cajón de sastre" que enumeran muchas actividades distintas deben llevar confianza baja,
 salvo que la denominación aclare la actividad (p. ej. "... DENTAL SL")."""
 
@@ -338,10 +342,10 @@ LLM_SCHEMA = {
 def _llm_params(denominacion: str | None, objeto: str | None) -> dict:
     return {
         "model": LLM_MODEL,
-        "max_tokens": 300,
+        "max_tokens": 2000,  # incluye el pensamiento adaptativo (siempre activo en Opus 5.5)
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": f"Denominación: {denominacion or '-'}\nObjeto social: {objeto or '-'}"}],
-        "output_config": {"format": {"type": "json_schema", "schema": LLM_SCHEMA}},
+        "output_config": {"effort": LLM_EFFORT, "format": {"type": "json_schema", "schema": LLM_SCHEMA}},
     }
 
 
@@ -401,7 +405,9 @@ def classify_llm(rows: list[dict], cache_path: Path, client=None, batch_threshol
         import anthropic
         for idx, key, params in pending:
             try:
-                msg = client.messages.create(**params)
+                # Fallback del lado del servidor ante una negativa (no disponible en Batches API).
+                msg = client.beta.messages.create(**params, betas=["server-side-fallback-2026-07-01"],
+                                                  fallbacks="default")
             except anthropic.RateLimitError as e:  # el SDK ya reintenta; si persiste, se deja sin clasificar
                 log.warning("LLM rate limit en fila %s: %s", idx, e)
                 continue
@@ -448,15 +454,17 @@ def classify_llm(rows: list[dict], cache_path: Path, client=None, batch_threshol
 
 
 def apply_llm(df: pd.DataFrame, cache_path: Path, umbral: float = 0.6, client=None, max_filas: int | None = None,
-              **kw) -> pd.DataFrame:
+              todos: bool = False, **kw) -> pd.DataFrame:
     """Reclasifica con LLM las filas con confianza < umbral que tengan objeto social.
+
+    Con todos=True clasifica todas las filas con objeto social y el LLM manda (también si dice "generico").
 
     Solo actúa si hay cliente inyectado o ANTHROPIC_API_KEY; si no, devuelve df sin cambios.
     """
     if client is None and not os.environ.get("ANTHROPIC_API_KEY"):
         log.info("ANTHROPIC_API_KEY no definida: se omite la capa LLM")
         return df
-    mask = (df["confianza"] < umbral) & df["objeto_social"].notna() & (df["objeto_social"].astype(str).str.len() > 10)
+    mask = ((df["confianza"] < umbral) | todos) & df["objeto_social"].notna() & (df["objeto_social"].astype(str).str.len() > 10)
     cand = df[mask]
     if max_filas:
         cand = cand.head(max_filas)
@@ -465,7 +473,7 @@ def apply_llm(df: pd.DataFrame, cache_path: Path, umbral: float = 0.6, client=No
     res = classify_llm(rows, cache_path, client=client, **kw)
     out = df.copy()
     for idx, d in res.items():
-        if d["confianza"] > out.at[idx, "confianza"]:
+        if todos or d["confianza"] > out.at[idx, "confianza"]:
             out.at[idx, "sector"] = d["sector"]
             out.at[idx, "confianza"] = round(d["confianza"], 3)
             out.at[idx, "regla"] = f"llm:{LLM_MODEL}"

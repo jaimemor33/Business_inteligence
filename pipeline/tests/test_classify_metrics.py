@@ -77,7 +77,11 @@ class FakeMessages:
         self.calls.append(params)
         assert params["model"] == C.LLM_MODEL
         assert params["output_config"]["format"]["type"] == "json_schema"
-        return _msg({"sector": "hosteleria", "confianza": 0.83, "justificacion": "Objeto centrado en bares."})
+        assert params["output_config"]["effort"] == C.LLM_EFFORT
+        assert params["fallbacks"] == "default" and params["betas"] == ["server-side-fallback-2026-07-01"]
+        return _msg(self.respuesta)
+
+    respuesta = {"sector": "hosteleria", "confianza": 0.83, "justificacion": "Objeto centrado en bares."}
 
 
 class FakeBatches:
@@ -97,8 +101,13 @@ class FakeBatches:
                 type="succeeded", message=_msg({"sector": "academia", "confianza": 1.4, "justificacion": "x"})))
 
 
+def _fake():
+    m = FakeMessages()
+    return SimpleNamespace(messages=m, beta=SimpleNamespace(messages=m))
+
+
 def test_llm_sincrono_y_cache(tmp_path):
-    fake = SimpleNamespace(messages=FakeMessages())
+    fake = _fake()
     df = pd.DataFrame({"denominacion": ["MULTI SL", "BAR PEPE SL"],
                        "objeto_social": ["Construcción, hostelería, formación y transporte", "Explotación de bares"],
                        "cnae": [None, None]})
@@ -111,8 +120,19 @@ def test_llm_sincrono_y_cache(tmp_path):
     assert len(fake.messages.calls) == 1  # segunda vez desde la caché
 
 
+def test_llm_todos_y_generico(tmp_path):
+    fake = _fake()
+    fake.messages.respuesta = {"sector": "generico", "confianza": 0.9, "justificacion": "Cajón de sastre."}
+    df = C.classify_frame(pd.DataFrame({"denominacion": ["BAR PEPE SL", "MULTI SL"],
+                                        "objeto_social": ["Explotación de bares", "Cualquier actividad lícita"],
+                                        "cnae": [None, None]}))
+    out = C.apply_llm(df, tmp_path / "c.jsonl", client=fake, todos=True)
+    assert len(fake.messages.calls) == 2  # todas las filas, no solo las de baja confianza
+    assert set(out["sector"]) == {"generico"} and "generico" in C.SECTORES_LLM
+
+
 def test_llm_batch(tmp_path):
-    fake = SimpleNamespace(messages=FakeMessages())
+    fake = _fake()
     rows = [{"idx": i, "denominacion": f"S{i} SL", "objeto_social": f"actividad {i}"} for i in range(5)]
     res = C.classify_llm(rows, tmp_path / "c.jsonl", client=fake, batch_threshold=2, poll_seconds=0)
     assert set(res) == set(range(5)) and all(r["confianza"] == 1.0 for r in res.values())  # recortada a [0, 1]
